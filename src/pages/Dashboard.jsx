@@ -4,6 +4,8 @@ import StatsCards from '../components/StatsCards.jsx';
 import CallStatus from '../components/CallStatus.jsx';
 import CallDetails from '../components/CallDetails.jsx';
 import ConversationPanel from '../components/ConversationPanel.jsx';
+import OutboundDialer from '../components/OutboundDialer.jsx';
+import AgentConfigPanel from '../components/AgentConfigPanel.jsx';
 import PlanStatus from '../components/PlanStatus.jsx';
 import {
   fetchCall,
@@ -169,12 +171,45 @@ function Dashboard() {
               from: data.from,
               to: data.to,
               status: 'incoming',
+              direction: data.direction || 'inbound',
               startedAt: new Date().toISOString(),
             });
             setSelectedCallSid(data.callSid);
             setMessages([]);
             setAiProcessing(false);
             setAiWaiting(false);
+            refreshStats();
+            refreshCalls();
+            break;
+
+          case 'CALL_OUTBOUND_STARTED':
+            setActiveCall({
+              callSid: data.callSid,
+              from: data.from,
+              to: data.to,
+              status: data.status || 'incoming',
+              direction: 'outbound',
+              startedAt: new Date().toISOString(),
+            });
+            setSelectedCallSid(data.callSid);
+            setMessages([]);
+            setAiProcessing(false);
+            setAiWaiting(false);
+            refreshStats();
+            refreshCalls();
+            break;
+
+          case 'CALL_OUTBOUND_ANSWERED':
+            setActiveCall((prev) => ({
+              ...(prev || {}),
+              callSid: data.callSid,
+              from: data.from || prev?.from,
+              to: data.to || prev?.to,
+              status: 'incoming',
+              direction: 'outbound',
+              startedAt: prev?.startedAt || new Date().toISOString(),
+            }));
+            setSelectedCallSid(data.callSid);
             refreshStats();
             refreshCalls();
             break;
@@ -186,6 +221,7 @@ function Dashboard() {
               from: data.from || prev?.from,
               to: data.to || prev?.to,
               status: 'connected',
+              direction: data.direction || prev?.direction || 'inbound',
               answeredAt: new Date().toISOString(),
             }));
             setSelectedCallSid(data.callSid);
@@ -196,15 +232,52 @@ function Dashboard() {
 
           case 'CALLER_MESSAGE':
             setSelectedCallSid(data.callSid);
-            setMessages((prev) => [
-              ...prev,
-              {
+            setMessages((prev) => {
+              const next = [...prev];
+              for (let i = next.length - 1; i >= 0; i -= 1) {
+                if (next[i].role === 'user' && next[i].streaming) {
+                  next[i] = {
+                    role: 'user',
+                    content: data.content,
+                    streaming: false,
+                    timestamp: new Date().toISOString(),
+                  };
+                  return next;
+                }
+              }
+              next.push({
                 role: 'user',
                 content: data.content,
+                streaming: false,
                 timestamp: new Date().toISOString(),
-              },
-            ]);
+              });
+              return next;
+            });
             setAiProcessing(false);
+            break;
+
+          case 'CALLER_STREAMING':
+            setSelectedCallSid(data.callSid);
+            setMessages((prev) => {
+              const next = [...prev];
+              for (let i = next.length - 1; i >= 0; i -= 1) {
+                if (next[i].role === 'user' && next[i].streaming) {
+                  next[i] = {
+                    ...next[i],
+                    content: data.content,
+                    timestamp: new Date().toISOString(),
+                  };
+                  return next;
+                }
+              }
+              next.push({
+                role: 'user',
+                content: data.content,
+                streaming: true,
+                timestamp: new Date().toISOString(),
+              });
+              return next;
+            });
             break;
 
           case 'AI_PROCESSING':
@@ -333,10 +406,10 @@ function Dashboard() {
         <div>
           <h1>AI Voice Agent</h1>
         </div>
-        <div className="header-meta">
+        {/* <div className="header-meta">
           <span className="label">Twilio Number</span>
           <span className="phone">{formatPhone(twilioNumber)}</span>
-        </div>
+        </div> */}
       </header>
 
       {/* <PlanStatus
@@ -353,6 +426,31 @@ function Dashboard() {
           wsStatus={wsStatus}
         />
         <StatsCards stats={stats} />
+        <OutboundDialer
+          activeCallSid={
+            activeCall?.direction === 'outbound' ? activeCall.callSid : null
+          }
+          onStarted={(result) => {
+            setActiveCall({
+              callSid: result.callSid,
+              from: result.from,
+              to: result.to,
+              status: result.status || 'incoming',
+              direction: 'outbound',
+              startedAt: new Date().toISOString(),
+            });
+            setSelectedCallSid(result.callSid);
+            setMessages([]);
+            refreshStats();
+            refreshCalls();
+          }}
+          onEnded={() => {
+            setActiveCall(null);
+            refreshStats();
+            refreshCalls();
+          }}
+        />
+        <AgentConfigPanel />
         <CallStatus
           activeCall={activeCall}
           aiProcessing={aiProcessing}

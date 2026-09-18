@@ -50,6 +50,12 @@ function CallStatus({ activeCall, aiProcessing, aiWaiting, memoryTurns = 0 }) {
   const turnLabel =
     memoryTurns === 1 ? '1 turn from database' : `${memoryTurns} turns from database`;
 
+  const isOutbound = activeCall.direction === 'outbound';
+  const remoteLabel = isOutbound ? 'Callee' : 'Caller';
+  const remoteNumber = isOutbound
+    ? activeCall.to || 'Unknown'
+    : activeCall.from || 'Unknown';
+
   return (
     <section className="panel call-status">
       <h2>Current Call</h2>
@@ -61,8 +67,12 @@ function CallStatus({ activeCall, aiProcessing, aiWaiting, memoryTurns = 0 }) {
           </dd>
         </div>
         <div>
-          <dt>Caller</dt>
-          <dd>{activeCall.from || 'Unknown'}</dd>
+          <dt>Direction</dt>
+          <dd>{isOutbound ? 'Outbound' : 'Inbound'}</dd>
+        </div>
+        <div>
+          <dt>{remoteLabel}</dt>
+          <dd>{remoteNumber}</dd>
         </div>
         <div>
           <dt>Duration</dt>

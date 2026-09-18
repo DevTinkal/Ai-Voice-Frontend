@@ -25,8 +25,13 @@ function CallDetails({ calls, selectedCallSid, onSelect }) {
               }
               onClick={() => onSelect(call.callSid)}
             >
-              <span className="caller">{call.from || 'Unknown'}</span>
+              <span className="caller">
+                {call.direction === 'outbound'
+                  ? call.to || 'Unknown'
+                  : call.from || 'Unknown'}
+              </span>
               <span className="call-meta">
+                {call.direction === 'outbound' ? 'out · ' : ''}
                 {call.status}
                 {typeof call.duration === 'number'
                   ? ` · ${call.duration}s`

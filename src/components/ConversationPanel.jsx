@@ -5,6 +5,8 @@ function ConversationPanel({ messages, aiProcessing, aiWaiting }) {
   const hasStreamingAssistant = (messages || []).some(
     (m) => m.role === 'assistant' && m.streaming
   );
+  const hasCaller = (messages || []).some((m) => m.role === 'user');
+  const hasAssistant = (messages || []).some((m) => m.role === 'assistant');
 
   useEffect(() => {
     if (endRef.current) {
@@ -24,6 +26,10 @@ function ConversationPanel({ messages, aiProcessing, aiWaiting }) {
   return (
     <section className="panel conversation-panel">
       <h2>Conversation</h2>
+      <div className="conversation-legend">
+        <span className={hasCaller ? 'on' : ''}>Caller</span>
+        <span className={hasAssistant ? 'on' : ''}>AI Assistant</span>
+      </div>
       <div className="messages">
         {messages.map((msg, index) => (
           <div
@@ -37,7 +43,7 @@ function ConversationPanel({ messages, aiProcessing, aiWaiting }) {
                   ? 'AI Assistant'
                   : 'System'}
             </span>
-            <p className="message-content">&ldquo;{msg.content}&rdquo;</p>
+            <p className="message-content">{msg.content}</p>
           </div>
         ))}
         {aiWaiting ? (
