@@ -1,6 +1,6 @@
 # AI Voice Agent — Frontend
 
-React + Vite live dashboard for the CTO demo.
+React + Vite live dashboard for the AI voice agent.
 
 ## Quick start
 

@@ -331,7 +331,6 @@ function Dashboard() {
     <div className="dashboard">
       <header className="dashboard-header">
         <div>
-          {/* <p className="eyebrow">CTO Demo</p> */}
           <h1>AI Voice Agent</h1>
         </div>
         <div className="header-meta">

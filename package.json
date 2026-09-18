@@ -1,7 +1,7 @@
 {
   "name": "twilio-ai-voice-agent-frontend",
   "version": "1.0.0",
-  "description": "Live dashboard for the AI voice agent demo",
+  "description": "Live dashboard for the AI voice agent",
   "private": true,
   "type": "module",
   "scripts": {
