@@ -16,6 +16,9 @@ function AgentConfigPanel() {
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const pollRef = useRef(null);
+  const waitingForIndexRef = useRef(false);
+  const sawIndexingRef = useRef(false);
+  const saveStartedAtRef = useRef(0);
 
   const applyAgent = useCallback((a) => {
     setAgent(a);
@@ -59,9 +62,50 @@ function AgentConfigPanel() {
     refresh();
   }, [refresh]);
 
+  // When Save starts indexing, flip the message as soon as status becomes ready/failed.
+  useEffect(() => {
+    if (!waitingForIndexRef.current || !knowledge) {
+      return;
+    }
+    const status = knowledge.status;
+    if (status === 'pending' || status === 'indexing') {
+      sawIndexingRef.current = true;
+      return;
+    }
+    if (status === 'failed') {
+      waitingForIndexRef.current = false;
+      sawIndexingRef.current = false;
+      setMessage('');
+      setError(
+        knowledge.error
+          ? `Indexing failed: ${knowledge.error}`
+          : 'Indexing failed. Check backend logs and Save again.'
+      );
+      return;
+    }
+    if (status === 'ready') {
+      const waitedMs = Date.now() - saveStartedAtRef.current;
+      // Require we saw indexing, or enough time passed (index finished very fast).
+      if (!sawIndexingRef.current && waitedMs < 1500) {
+        return;
+      }
+      waitingForIndexRef.current = false;
+      sawIndexingRef.current = false;
+      const chunks =
+        knowledge.chunkCount != null ? knowledge.chunkCount : 0;
+      setError('');
+      setMessage(
+        `Index ready · ${Number(chunks).toLocaleString()} chunks — safe to call`
+      );
+    }
+  }, [knowledge]);
+
   useEffect(() => {
     const status = knowledge && knowledge.status;
-    const needsPoll = status === 'pending' || status === 'indexing';
+    const needsPoll =
+      waitingForIndexRef.current ||
+      status === 'pending' ||
+      status === 'indexing';
     if (!needsPoll) {
       if (pollRef.current) {
         clearInterval(pollRef.current);
@@ -74,14 +118,21 @@ function AgentConfigPanel() {
     }
     pollRef.current = setInterval(() => {
       refreshKnowledge();
-    }, 1800);
+    }, 1000);
     return () => {
       if (pollRef.current) {
         clearInterval(pollRef.current);
         pollRef.current = null;
       }
     };
-  }, [knowledge, refreshKnowledge]);
+  }, [knowledge, message, refreshKnowledge]);
+
+  function beginIndexWait(pendingMessage) {
+    waitingForIndexRef.current = true;
+    sawIndexingRef.current = false;
+    saveStartedAtRef.current = Date.now();
+    setMessage(pendingMessage);
+  }
 
   async function handleCreate(e) {
     e.preventDefault();
@@ -98,11 +149,14 @@ function AgentConfigPanel() {
           name: name.trim() || 'Agent',
           prompt: prompt.trim(),
         });
+        beginIndexWait('Agent created — indexing for search…');
+      } else {
+        setMessage('Agent created');
       }
       applyAgent(data.agent);
-      setMessage('Agent created — indexing prompt…');
       await refreshKnowledge();
     } catch (err) {
+      waitingForIndexRef.current = false;
       setError(err.message || 'Create failed');
     } finally {
       setSaving(false);
@@ -125,9 +179,10 @@ function AgentConfigPanel() {
         prompt: trimmedPrompt,
       });
       applyAgent(data.agent);
-      setMessage('Saved — indexing for search…');
+      beginIndexWait('Saved — indexing for search…');
       await refreshKnowledge();
     } catch (err) {
+      waitingForIndexRef.current = false;
       setError(err.message || 'Save failed');
     } finally {
       setSaving(false);
@@ -190,6 +245,7 @@ function AgentConfigPanel() {
             </button>
           </div>
         </form>
+        {message ? <p className="success-text">{message}</p> : null}
         {error ? <p className="error-text">{error}</p> : null}
       </section>
     );
@@ -198,11 +254,6 @@ function AgentConfigPanel() {
   return (
     <section className="panel agent-config">
       <h2>Agent Configuration</h2>
-      {/* <p className="field-hint">
-        Everything lives in this field. On save it is indexed; calls retrieve
-        only relevant sections — the full text is never sent to Gemini as
-        systemInstruction.
-      </p> */}
 
       <form className="agent-config-form" onSubmit={handleSave}>
         <div className="agent-meta-row">
@@ -237,13 +288,10 @@ function AgentConfigPanel() {
             disabled={saving}
             required
           />
-          <span className="field-hint">
-            {/* {prompt.length.toLocaleString()} characters */}
-          </span>
         </label>
       </form>
 
-      {/* <div className="kb-status-badge">
+      <div className="kb-status-badge">
         <span className="muted">Index:</span>{' '}
         <span className={`kb-status kb-status-${kbStatus}`}>{kbStatus}</span>
         {kbStatus === 'ready' ? (
@@ -253,10 +301,13 @@ function AgentConfigPanel() {
             chars
           </span>
         ) : null}
+        {kbStatus === 'indexing' || kbStatus === 'pending' ? (
+          <span className="muted"> — please wait…</span>
+        ) : null}
         {knowledge && knowledge.error ? (
           <span className="error-text"> — {knowledge.error}</span>
         ) : null}
-      </div> */}
+      </div>
 
       {message ? <p className="success-text">{message}</p> : null}
       {error ? <p className="error-text">{error}</p> : null}
