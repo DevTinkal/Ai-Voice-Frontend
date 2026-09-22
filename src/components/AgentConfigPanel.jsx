@@ -201,9 +201,9 @@ function AgentConfigPanel() {
       <section className="panel agent-config">
         <h2>Agent Configuration</h2>
         <p className="field-hint">
-          One Agent Prompt holds everything (instructions and company
-          knowledge). On save it is indexed; calls retrieve only relevant
-          sections.
+          Agent Name is spoken on calls. Agent Prompt holds company knowledge
+          and company-specific rules (indexed on save). Generic conversation
+          protection is built into the voice agent.
         </p>
         <form className="agent-config-form" onSubmit={handleCreate}>
           <label className="agent-field">
