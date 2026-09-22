@@ -15,6 +15,7 @@ function AgentConfigPanel() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
+  const [waitingForIndex, setWaitingForIndex] = useState(false);
   const pollRef = useRef(null);
   const waitingForIndexRef = useRef(false);
   const sawIndexingRef = useRef(false);
@@ -62,7 +63,7 @@ function AgentConfigPanel() {
     refresh();
   }, [refresh]);
 
-  // When Save starts indexing, flip the message as soon as status becomes ready/failed.
+  // Flip to "Saved" only when indexing fully completes (or show simple failure).
   useEffect(() => {
     if (!waitingForIndexRef.current || !knowledge) {
       return;
@@ -70,33 +71,27 @@ function AgentConfigPanel() {
     const status = knowledge.status;
     if (status === 'pending' || status === 'indexing') {
       sawIndexingRef.current = true;
+      setMessage('Please wait…');
       return;
     }
     if (status === 'failed') {
       waitingForIndexRef.current = false;
       sawIndexingRef.current = false;
+      setWaitingForIndex(false);
       setMessage('');
-      setError(
-        knowledge.error
-          ? `Indexing failed: ${knowledge.error}`
-          : 'Indexing failed. Check backend logs and Save again.'
-      );
+      setError('Save failed. Please try again.');
       return;
     }
     if (status === 'ready') {
       const waitedMs = Date.now() - saveStartedAtRef.current;
-      // Require we saw indexing, or enough time passed (index finished very fast).
       if (!sawIndexingRef.current && waitedMs < 1500) {
         return;
       }
       waitingForIndexRef.current = false;
       sawIndexingRef.current = false;
-      const chunks =
-        knowledge.chunkCount != null ? knowledge.chunkCount : 0;
+      setWaitingForIndex(false);
       setError('');
-      setMessage(
-        `Index ready · ${Number(chunks).toLocaleString()} chunks — safe to call`
-      );
+      setMessage('Saved');
     }
   }, [knowledge]);
 
@@ -127,11 +122,12 @@ function AgentConfigPanel() {
     };
   }, [knowledge, message, refreshKnowledge]);
 
-  function beginIndexWait(pendingMessage) {
+  function beginIndexWait() {
     waitingForIndexRef.current = true;
     sawIndexingRef.current = false;
     saveStartedAtRef.current = Date.now();
-    setMessage(pendingMessage);
+    setWaitingForIndex(true);
+    setMessage('Please wait…');
   }
 
   async function handleCreate(e) {
@@ -149,14 +145,15 @@ function AgentConfigPanel() {
           name: name.trim() || 'Agent',
           prompt: prompt.trim(),
         });
-        beginIndexWait('Agent created — indexing for search…');
+        beginIndexWait();
       } else {
-        setMessage('Agent created');
+        setMessage('Saved');
       }
       applyAgent(data.agent);
       await refreshKnowledge();
     } catch (err) {
       waitingForIndexRef.current = false;
+      setWaitingForIndex(false);
       setError(err.message || 'Create failed');
     } finally {
       setSaving(false);
@@ -179,10 +176,11 @@ function AgentConfigPanel() {
         prompt: trimmedPrompt,
       });
       applyAgent(data.agent);
-      beginIndexWait('Saved — indexing for search…');
+      beginIndexWait();
       await refreshKnowledge();
     } catch (err) {
       waitingForIndexRef.current = false;
+      setWaitingForIndex(false);
       setError(err.message || 'Save failed');
     } finally {
       setSaving(false);
@@ -197,12 +195,6 @@ function AgentConfigPanel() {
       </section>
     );
   }
-
-  const kbStatus = knowledge && knowledge.status ? knowledge.status : 'missing';
-  const kbChunks =
-    knowledge && knowledge.chunkCount != null ? knowledge.chunkCount : 0;
-  const kbChars =
-    knowledge && knowledge.charCount != null ? knowledge.charCount : 0;
 
   if (!agent) {
     return (
@@ -251,6 +243,8 @@ function AgentConfigPanel() {
     );
   }
 
+  const busy = saving || waitingForIndex;
+
   return (
     <section className="panel agent-config">
       <h2>Agent Configuration</h2>
@@ -263,7 +257,7 @@ function AgentConfigPanel() {
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              disabled={saving}
+              disabled={busy}
               required
             />
           </label>
@@ -271,9 +265,9 @@ function AgentConfigPanel() {
             <button
               type="submit"
               className="btn-primary btn-compact"
-              disabled={saving}
+              disabled={busy}
             >
-              Save
+              {busy ? 'Saving…' : 'Save'}
             </button>
           </div>
         </div>
@@ -285,29 +279,11 @@ function AgentConfigPanel() {
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
             placeholder="Complete instructions + company knowledge…"
-            disabled={saving}
+            disabled={busy}
             required
           />
         </label>
       </form>
-
-      <div className="kb-status-badge">
-        <span className="muted">Index:</span>{' '}
-        <span className={`kb-status kb-status-${kbStatus}`}>{kbStatus}</span>
-        {kbStatus === 'ready' ? (
-          <span className="muted">
-            {' '}
-            · {kbChunks.toLocaleString()} chunks · {kbChars.toLocaleString()}{' '}
-            chars
-          </span>
-        ) : null}
-        {kbStatus === 'indexing' || kbStatus === 'pending' ? (
-          <span className="muted"> — please wait…</span>
-        ) : null}
-        {knowledge && knowledge.error ? (
-          <span className="error-text"> — {knowledge.error}</span>
-        ) : null}
-      </div>
 
       {message ? <p className="success-text">{message}</p> : null}
       {error ? <p className="error-text">{error}</p> : null}

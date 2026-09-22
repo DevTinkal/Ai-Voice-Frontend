@@ -53,8 +53,12 @@ export function fetchStats() {
   return request('/api/stats');
 }
 
-export function fetchCalls(limit = 20) {
-  return request(`/api/calls?limit=${limit}`);
+export function fetchCalls(limit = 20, skip = 0) {
+  const q = new URLSearchParams({
+    limit: String(limit),
+    skip: String(skip),
+  });
+  return request(`/api/calls?${q.toString()}`);
 }
 
 export function fetchCall(callSid) {

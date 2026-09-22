@@ -43,6 +43,8 @@ function Dashboard() {
     callsToday: 0,
   });
   const [calls, setCalls] = useState([]);
+  const [callsHasMore, setCallsHasMore] = useState(false);
+  const [callsLoadingMore, setCallsLoadingMore] = useState(false);
   const [selectedCallSid, setSelectedCallSid] = useState(null);
   const [messages, setMessages] = useState([]);
   const [activeCall, setActiveCall] = useState(null);
@@ -64,11 +66,14 @@ function Dashboard() {
     }
   }, []);
 
+  const CALLS_PAGE_SIZE = 20;
+
   const refreshCalls = useCallback(async () => {
     try {
-      const data = await fetchCalls(20);
+      const data = await fetchCalls(CALLS_PAGE_SIZE, 0);
       const list = data.calls || [];
       setCalls(list);
+      setCallsHasMore(Boolean(data.hasMore));
 
       const live = list.find((c) => ACTIVE_STATUSES.has(c.status));
       if (live) {
@@ -83,6 +88,33 @@ function Dashboard() {
       // keep last known values
     }
   }, [selectedCallSid]);
+
+  const loadMoreCalls = useCallback(async () => {
+    if (callsLoadingMore || !callsHasMore) {
+      return;
+    }
+    setCallsLoadingMore(true);
+    try {
+      const data = await fetchCalls(CALLS_PAGE_SIZE, calls.length);
+      const next = data.calls || [];
+      setCalls((prev) => {
+        const seen = new Set(prev.map((c) => c.callSid));
+        const merged = [...prev];
+        for (const call of next) {
+          if (!seen.has(call.callSid)) {
+            merged.push(call);
+            seen.add(call.callSid);
+          }
+        }
+        return merged;
+      });
+      setCallsHasMore(Boolean(data.hasMore));
+    } catch {
+      // keep last known values
+    } finally {
+      setCallsLoadingMore(false);
+    }
+  }, [calls.length, callsHasMore, callsLoadingMore]);
 
   const loadCallDetail = useCallback(async (callSid) => {
     if (!callSid) {
@@ -466,6 +498,9 @@ function Dashboard() {
           calls={calls}
           selectedCallSid={selectedCallSid}
           onSelect={setSelectedCallSid}
+          onLoadMore={loadMoreCalls}
+          hasMore={callsHasMore}
+          loadingMore={callsLoadingMore}
         />
       </div>
 

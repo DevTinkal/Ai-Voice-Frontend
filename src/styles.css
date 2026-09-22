@@ -926,6 +926,13 @@ body {
   overflow-y: auto;
 }
 
+.call-list-footer {
+  padding: 8px 4px;
+  text-align: center;
+  font-size: 0.8rem;
+  list-style: none;
+}
+
 .call-list-item {
   width: 100%;
   text-align: left;
