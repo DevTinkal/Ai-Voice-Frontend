@@ -6,6 +6,11 @@ import {
   getKnowledgeStatus,
 } from '../services/api.js';
 
+function formatSavingPercent(percent) {
+  const n = Math.max(0, Math.min(100, Math.round(Number(percent) || 0)));
+  return `Saving ${n}%`;
+}
+
 function AgentConfigPanel() {
   const [agent, setAgent] = useState(null);
   const [name, setName] = useState('');
@@ -16,6 +21,7 @@ function AgentConfigPanel() {
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [waitingForIndex, setWaitingForIndex] = useState(false);
+  const [savePercent, setSavePercent] = useState(0);
   const pollRef = useRef(null);
   const waitingForIndexRef = useRef(false);
   const sawIndexingRef = useRef(false);
@@ -63,33 +69,49 @@ function AgentConfigPanel() {
     refresh();
   }, [refresh]);
 
-  // Flip to "Saved" only when indexing fully completes (or show simple failure).
+  // Live saving % while indexing; show Saved or save error when done.
   useEffect(() => {
     if (!waitingForIndexRef.current || !knowledge) {
       return;
     }
     const status = knowledge.status;
+    const progress = knowledge.progress || null;
+
     if (status === 'pending' || status === 'indexing') {
       sawIndexingRef.current = true;
-      setMessage('Please wait…');
+      let nextPercent = 5;
+      if (progress && progress.active && Number.isFinite(Number(progress.percent))) {
+        nextPercent = Number(progress.percent);
+      } else if (status === 'indexing') {
+        nextPercent = 10;
+      }
+      setSavePercent((prev) => Math.max(prev, nextPercent));
+      setMessage(formatSavingPercent(nextPercent));
       return;
     }
     if (status === 'failed') {
       waitingForIndexRef.current = false;
       sawIndexingRef.current = false;
       setWaitingForIndex(false);
+      setSavePercent(0);
       setMessage('');
-      setError('Save failed. Please try again.');
+      const detail =
+        (knowledge.error && String(knowledge.error).trim()) ||
+        'Indexing failed. Please try again.';
+      setError(`Saving error: ${detail}`);
       return;
     }
     if (status === 'ready') {
       const waitedMs = Date.now() - saveStartedAtRef.current;
       if (!sawIndexingRef.current && waitedMs < 1500) {
+        setSavePercent((prev) => Math.max(prev, 15));
+        setMessage(formatSavingPercent(15));
         return;
       }
       waitingForIndexRef.current = false;
       sawIndexingRef.current = false;
       setWaitingForIndex(false);
+      setSavePercent(100);
       setError('');
       setMessage('Saved');
     }
@@ -111,9 +133,10 @@ function AgentConfigPanel() {
     if (pollRef.current) {
       return undefined;
     }
+    // Poll often enough for smooth live % updates.
     pollRef.current = setInterval(() => {
       refreshKnowledge();
-    }, 1000);
+    }, 500);
     return () => {
       if (pollRef.current) {
         clearInterval(pollRef.current);
@@ -127,20 +150,24 @@ function AgentConfigPanel() {
     sawIndexingRef.current = false;
     saveStartedAtRef.current = Date.now();
     setWaitingForIndex(true);
-    setMessage('Please wait…');
+    setSavePercent(8);
+    setMessage(formatSavingPercent(8));
   }
 
   async function handleCreate(e) {
     e.preventDefault();
     setSaving(true);
     setError('');
-    setMessage('');
+    setMessage(formatSavingPercent(2));
+    setSavePercent(2);
     try {
       let data = await createAgent({
         name: name.trim() || 'Agent',
         prompt: prompt.trim() || undefined,
       });
       if (prompt.trim()) {
+        setSavePercent(6);
+        setMessage(formatSavingPercent(6));
         data = await updateAgent({
           name: name.trim() || 'Agent',
           prompt: prompt.trim(),
@@ -148,13 +175,16 @@ function AgentConfigPanel() {
         beginIndexWait();
       } else {
         setMessage('Saved');
+        setSavePercent(0);
       }
       applyAgent(data.agent);
       await refreshKnowledge();
     } catch (err) {
       waitingForIndexRef.current = false;
       setWaitingForIndex(false);
-      setError(err.message || 'Create failed');
+      setSavePercent(0);
+      setMessage('');
+      setError(`Saving error: ${err.message || 'Create failed'}`);
     } finally {
       setSaving(false);
     }
@@ -169,7 +199,8 @@ function AgentConfigPanel() {
     }
     setSaving(true);
     setError('');
-    setMessage('');
+    setSavePercent(2);
+    setMessage(formatSavingPercent(2));
     try {
       const data = await updateAgent({
         name: name.trim(),
@@ -181,7 +212,9 @@ function AgentConfigPanel() {
     } catch (err) {
       waitingForIndexRef.current = false;
       setWaitingForIndex(false);
-      setError(err.message || 'Save failed');
+      setSavePercent(0);
+      setMessage('');
+      setError(`Saving error: ${err.message || 'Save failed'}`);
     } finally {
       setSaving(false);
     }
@@ -233,17 +266,26 @@ function AgentConfigPanel() {
               className="btn-primary btn-compact"
               disabled={saving}
             >
-              Create agent
+              {saving ? formatSavingPercent(savePercent || 2) : 'Create agent'}
             </button>
           </div>
         </form>
-        {message ? <p className="success-text">{message}</p> : null}
+        {message && !error ? (
+          <p className={message === 'Saved' ? 'success-text' : 'saving-text'}>
+            {message}
+          </p>
+        ) : null}
         {error ? <p className="error-text">{error}</p> : null}
       </section>
     );
   }
 
   const busy = saving || waitingForIndex;
+  const buttonLabel = busy
+    ? formatSavingPercent(
+        message === 'Saved' ? 100 : savePercent || (saving ? 2 : 8)
+      )
+    : 'Save';
 
   return (
     <section className="panel agent-config">
@@ -267,7 +309,7 @@ function AgentConfigPanel() {
               className="btn-primary btn-compact"
               disabled={busy}
             >
-              {busy ? 'Saving…' : 'Save'}
+              {buttonLabel}
             </button>
           </div>
         </div>
@@ -285,7 +327,20 @@ function AgentConfigPanel() {
         </label>
       </form>
 
-      {message ? <p className="success-text">{message}</p> : null}
+      {busy && message !== 'Saved' ? (
+        <div className="saving-progress" aria-live="polite">
+          <div className="saving-progress-track">
+            <div
+              className="saving-progress-bar"
+              style={{ width: `${Math.max(2, Math.min(100, savePercent))}%` }}
+            />
+          </div>
+          <p className="saving-text">{formatSavingPercent(savePercent)}</p>
+        </div>
+      ) : null}
+      {message === 'Saved' && !error ? (
+        <p className="success-text">Saved</p>
+      ) : null}
       {error ? <p className="error-text">{error}</p> : null}
     </section>
   );
