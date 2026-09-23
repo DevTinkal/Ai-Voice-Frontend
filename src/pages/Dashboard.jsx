@@ -313,7 +313,7 @@ function Dashboard() {
             break;
 
           case 'AI_PROCESSING':
-            setAiWaiting(false);
+            // Do not clear Waiting — stale processing must not undo AI_WAITING.
             setAiProcessing(true);
             break;
 
@@ -323,6 +323,7 @@ function Dashboard() {
             break;
 
           case 'AI_STREAMING':
+            // Backend suppresses AI_STREAMING while WAITING; if it arrives, AI is speaking again.
             setAiWaiting(false);
             setAiProcessing(true);
             setSelectedCallSid(data.callSid);
